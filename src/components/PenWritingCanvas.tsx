@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { VocabularyWord, UserStats, PracticeStory } from '../types';
 import { Volume2, Eraser, RotateCcw, CheckCircle2, Sparkles, Pencil, ArrowRight, ShoppingBag, AlertCircle, Target, Navigation, MoveDownRight, Layers } from 'lucide-react';
 import { INITIAL_SHOP_ITEMS } from '../data/vocabulary';
-import { speakText } from '../utils/speech';
+import { speakText } from '../utils/speechUtils';
 
 interface PenWritingCanvasProps {
   vocabulary: VocabularyWord[];
@@ -12,7 +12,7 @@ interface PenWritingCanvasProps {
   activeStory?: PracticeStory;
   onSelectStory?: (story: PracticeStory) => void;
   stats: UserStats;
-  onRewardXp: (amount: number, taskId?: string) => void;
+  onRewardXp: (amount: number) => void;
   onUseHint: () => boolean;
   isStrictMode?: boolean;
   onOpenShop?: () => void;
@@ -37,7 +37,7 @@ interface StrokeAnalysisBreakdown {
   boundsScore: number;      // Letter bounding box distribution & limits
   structureScore: number;   // Stroke count & stroke shape appropriateness
   pixelCoverageScore: number; // Grid pixel alignment with guide
-  overallScore: number;     // Weighted total (must be >= 50%)
+  overallScore: number;     // Weighted total (must be >= 40%)
   diagnosticMsg: string;
 }
 
@@ -132,16 +132,26 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
 
     const { x, y } = getCoordinates(e);
 
-    ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.imageSmoothingEnabled = true;
 
     if (isEraser) {
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineWidth = penLineWidth * 3.5;
+      ctx.beginPath();
+      ctx.arc(x, y, (penLineWidth * 3.5) / 2, 0, Math.PI * 2);
+      ctx.fill();
     } else {
       ctx.globalCompositeOperation = 'source-over';
       ctx.strokeStyle = penColor;
+      ctx.fillStyle = penColor;
       ctx.lineWidth = penLineWidth;
+
+      // Render crisp round cap dot on initial touch / tap
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.5, penLineWidth / 2), 0, Math.PI * 2);
+      ctx.fill();
 
       // Init stroke data
       currentStrokeRef.current = {
@@ -150,9 +160,6 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
         isEraser: false
       };
     }
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -164,9 +171,19 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
 
     const { x, y } = getCoordinates(e);
 
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.imageSmoothingEnabled = true;
+
     if (isEraser) {
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineWidth = penLineWidth * 3.5;
+      ctx.beginPath();
+      const points = currentStrokeRef.current?.points;
+      const prev = points && points.length > 0 ? points[points.length - 1] : { x, y };
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
     } else {
       ctx.globalCompositeOperation = 'source-over';
       if (penColor === 'rainbow') {
@@ -186,21 +203,30 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
       if (currentStrokeRef.current) {
         const points = currentStrokeRef.current.points;
         const last = points[points.length - 1];
-        if (!last || Math.hypot(x - last.x, y - last.y) > 1.2) {
+
+        if (last) {
+          const dist = Math.hypot(x - last.x, y - last.y);
+          if (dist > 0.8) {
+            // Smooth quadratic curve rendering for natural calligraphy feel with thin, medium, and thick strokes
+            const midX = (last.x + x) / 2;
+            const midY = (last.y + y) / 2;
+
+            ctx.beginPath();
+            ctx.moveTo(last.x, last.y);
+            ctx.quadraticCurveTo(last.x, last.y, midX, midY);
+            ctx.stroke();
+
+            points.push({ x, y, t: Date.now() });
+          }
+        } else {
           points.push({ x, y, t: Date.now() });
         }
       }
     }
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    ctx.lineTo(x, y);
-    ctx.stroke();
   };
 
   const stopDrawing = () => {
-    if (currentStrokeRef.current && currentStrokeRef.current.points.length >= 2) {
+    if (currentStrokeRef.current && currentStrokeRef.current.points.length >= 1) {
       strokesRef.current.push(currentStrokeRef.current);
     }
     currentStrokeRef.current = null;
@@ -530,8 +556,13 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
     const coverageRatio = targetCoveredCount / targetGridPixels; // How much of actual guide letter ink is covered
     const precisionRatio = userTotalSamples > 0 ? userInTargetCount / userTotalSamples : 0;
 
-    // Convert raw guide coverage ratio (where ~0.38+ is a solid trace) into 0-100 score
-    const guideTracingScore = Math.min(100, Math.round((coverageRatio / 0.36) * 100));
+    // Scale coverage expectation dynamically based on pen thickness (baseline 8px) so thin, medium, and thick lines are evaluated fairly
+    const penFactor = Math.min(1.3, Math.max(0.65, penLineWidth / 8));
+    const expectedCoverage = 0.32 * penFactor;
+    const minGateCoverage = 0.16 * penFactor;
+
+    // Convert raw guide coverage ratio into 0-100 score
+    const guideTracingScore = Math.min(100, Math.round((coverageRatio / expectedCoverage) * 100));
     const pixelCoverageScore = Math.min(100, Math.round((guideTracingScore * 0.75 + precisionRatio * 25)));
 
     // OVERALL WEIGHTED STROKE MATCH SCORE (0 - 100%)
@@ -553,13 +584,13 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
       // User placed dots instead of writing letter lines
       overallScore = Math.min(overallScore, 15);
       diagnosticMsg = 'خطأ! قمت بوضع نقاط بسيطة بدلاً من رسم خطوط الحروف الكاملة. يرجى كتابة كل حرف كخط متصل وواضح.';
-    } else if (coverageRatio < 0.25) {
-      // User barely covered 25% of the letter shapes
-      overallScore = Math.min(overallScore, Math.round(coverageRatio * 160));
+    } else if (coverageRatio < minGateCoverage) {
+      // User barely covered minimum letter shapes
+      overallScore = Math.min(overallScore, Math.round((coverageRatio / minGateCoverage) * 35));
       diagnosticMsg = 'تغطية خطوط الكلمة غير كافية إطلاقاً. لم تقم بتتبع خطوط وجسم الحروف بشكل كامل.';
     } else if (coveredRealZonesCount < wordLen) {
       // Missing some letters completely
-      overallScore = Math.min(overallScore, 45);
+      overallScore = Math.min(overallScore, 38);
       const missingCount = wordLen - coveredRealZonesCount;
       diagnosticMsg = `لم تقم بكتابة كافة الحروف! هناك ${missingCount} حرف/حروف لم تُكتب بخطوط واضحة.`;
     } else if (numReal === 1 && wordLen >= 3) {
@@ -570,7 +601,7 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
     } else if (strokeDirectionScore < 60) {
       diagnosticMsg = 'اتجاه حركات القلم خاطئة! يرجى اتباع رسم الضربات من الأعلى للأسفل ومن اليسار لليمين.';
     } else {
-      diagnosticMsg = 'نسبة تطابق طريقة رسم وبنية الكلمة لم تتجاوز الحد الأدنى المطلوب (50%).';
+      diagnosticMsg = 'نسبة تطابق طريقة رسم وبنية الكلمة لم تتجاوز الحد الأدنى المطلوب (40%).';
     }
 
     const breakdown: StrokeAnalysisBreakdown = {
@@ -585,20 +616,20 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
 
     setHasChecked(true);
 
-    // PASS CONDITION: Match Score MUST be >= 50%
-    if (overallScore >= 50) {
+    // PASS CONDITION: Match Score MUST be >= 40%
+    if (overallScore >= 40) {
       setFeedback({
         isSuccess: true,
         msg: `ممتاز جداً! تم كتابة كلمة "${activeWord.word}" باتباع طريقة ورسم الحروف الصحيحة بنسبة تطابق ${overallScore}% ✍️✨ (+15 XP)`,
         score: overallScore,
         breakdown
       });
-      onRewardXp(15, `pen_writing_${activeWord.id}`);
+      onRewardXp(15);
       speakWord(activeWord.word);
     } else {
       setFeedback({
         isSuccess: false,
-        msg: `نسبة تطابق طريقة الكتابة هي ${overallScore}% (المطلوب 50% فأكثر للنجاح). ${diagnosticMsg} 🎯`,
+        msg: `نسبة تطابق طريقة الكتابة هي ${overallScore}% (المطلوب 40% فأكثر للنجاح). ${diagnosticMsg} 🎯`,
         score: overallScore,
         breakdown
       });
@@ -693,7 +724,7 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
               Pen Canvas • الكتابة بالقلم ✏️
             </span>
             <span className="bg-amber-50 text-amber-900 border border-amber-200 text-xs font-black px-3 py-1 rounded-full flex items-center gap-1">
-              <span>مطابقة ضربات الحروف (Stroke Matching) ≥ 50%</span>
+              <span>مطابقة ضربات الحروف (Stroke Matching) ≥ 40%</span>
             </span>
             <span className="bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5">
               <span>الكلمة {validIndex + 1} من {totalWords}</span>
@@ -832,11 +863,11 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
 
         {/* Line Width Thickness Selector */}
         <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-xs text-slate-600 font-semibold px-1.5">السمك:</span>
+          <span className="text-xs text-slate-600 font-semibold px-1.5">سمك القلم:</span>
           {[
-            { width: 5, label: 'رفيع' },
+            { width: 4, label: 'رفيع' },
             { width: 8, label: 'متوسط' },
-            { width: 13, label: 'عريض' }
+            { width: 12, label: 'عريض' }
           ].map((w) => (
             <button
               key={w.width}
@@ -846,6 +877,7 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
                   ? 'bg-[#214ECF] text-white shadow-xs'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
+              title={`خط ${w.label} (${w.width}px)`}
             >
               {w.label}
             </button>
@@ -948,8 +980,8 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
                 <span className="text-xs sm:text-sm font-black block">{feedback.msg}</span>
                 <span className="text-[11px] font-bold text-slate-600 block mt-0.5">
                   {feedback.isSuccess
-                    ? 'تم اجتياز معيار مطابقة طريقة رسم الحروف بنجاح (تجاوزت 50%).'
-                    : 'لم يتم تحقيق درجة النجاح. يجب ألا تقل نسبة مطابقة طريقة الكتابة عن 50%.'}
+                    ? 'تم اجتياز معيار مطابقة طريقة رسم الحروف بنجاح (تجاوزت 40%).'
+                    : 'لم يتم تحقيق درجة النجاح. يجب ألا تقل نسبة مطابقة طريقة الكتابة عن 40%.'}
                 </span>
               </div>
             </div>
@@ -976,11 +1008,11 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
                   </span>
                 </div>
                 <span className={`text-xs font-black font-['Outfit'] px-2.5 py-0.5 rounded-full border ${
-                  feedback.breakdown.overallScore >= 50
+                  feedback.breakdown.overallScore >= 40
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
                     : 'bg-rose-500/20 text-rose-300 border-rose-500'
                 }`}>
-                  الإجمالي: {feedback.breakdown.overallScore}% {feedback.breakdown.overallScore >= 50 ? '✅ (ناجح)' : '❌ (غير كافٍ)'}
+                  الإجمالي: {feedback.breakdown.overallScore}% {feedback.breakdown.overallScore >= 40 ? '✅ (ناجح)' : '❌ (غير كافٍ)'}
                 </span>
               </div>
 
@@ -988,7 +1020,7 @@ export const PenWritingCanvas: React.FC<PenWritingCanvasProps> = ({
               <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700 mb-4 p-0.5">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    feedback.breakdown.overallScore >= 50 ? 'bg-emerald-500' : 'bg-rose-500'
+                    feedback.breakdown.overallScore >= 40 ? 'bg-emerald-500' : 'bg-rose-500'
                   }`}
                   style={{ width: `${feedback.breakdown.overallScore}%` }}
                 />
