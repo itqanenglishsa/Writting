@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-almarai {
+    font-family: 'Almarai', sans-serif;
+  }
+
+  /* Itqan Brand Identity Palette Helpers */
+  .bg-itqan-blue { background-color: #214ECF; }
+  .text-itqan-blue { color: #214ECF; }
+  .border-itqan-blue { border-color: #214ECF; }
+
+  .bg-itqan-sky { background-color: #84A5F2; }
+  .text-itqan-sky { color: #84A5F2; }
+
+  .bg-itqan-amber { background-color: #EA9835; }
+  .text-itqan-amber { color: #EA9835; }
+
+  .bg-itqan-peach { background-color: #FCDED6; }
+  .text-itqan-peach { color: #FCDED6; }
+
+  .bg-itqan-red { background-color: #E06045; }
+  .text-itqan-red { color: #E06045; }
+
+  /* Standard Clean Card & Button Utilities */
+  .clean-card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    border-radius: 1rem;
+  }
+
+  .clean-button-primary {
+    background-color: #214ECF;
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 0.75rem;
+    transition: all 0.15s ease-in-out;
+  }
+  .clean-button-primary:hover {
+    background-color: #1a3fb3;
+  }
+
+  .clean-button-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+    font-weight: 600;
+    border-radius: 0.75rem;
+    transition: all 0.15s ease-in-out;
+  }
+  .clean-button-secondary:hover {
+    background-color: #e2e8f0;
+  }
+}
