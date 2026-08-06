@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { PracticeStory, UserStats, VocabularyWord } from '../types';
 import { VOCABULARY_LIST } from '../data/vocabulary';
+import { speakText } from '../utils/speechUtils';
 import { EyeOff, CheckCircle2, Sparkles, Volume2, Lightbulb, RefreshCw, ArrowLeft } from 'lucide-react';
-import { speakText as playSpeech } from '../utils/speech';
 
 interface MemoryModePracticeProps {
   stories: PracticeStory[];
@@ -11,7 +11,7 @@ interface MemoryModePracticeProps {
   activeVocabWord?: VocabularyWord;
   onSelectWord?: (word: VocabularyWord) => void;
   stats: UserStats;
-  onRewardXp: (amount: number, taskId?: string) => void;
+  onRewardXp: (amount: number) => void;
   onUseHint: () => boolean;
   isStrictMode?: boolean;
 }
@@ -54,10 +54,6 @@ export const MemoryModePractice: React.FC<MemoryModePracticeProps> = ({
     setFullWordInput('');
     setFeedback(null);
   }, [wordIndex, stage, activeStory]);
-
-  const speakText = (text: string) => {
-    playSpeech(text);
-  };
 
   // Helper to render target word with missing letters for Stage 1 in Rubber Hose style
   const renderWordWithBlanks = () => {
@@ -138,7 +134,7 @@ export const MemoryModePractice: React.FC<MemoryModePracticeProps> = ({
       });
 
       if (isSuccess) {
-        onRewardXp(20, `memory_stage1_${activeStory.id}_word_${wordIndex}`);
+        onRewardXp(20);
         speakText(targetWord);
       }
     } else {
@@ -153,7 +149,7 @@ export const MemoryModePractice: React.FC<MemoryModePracticeProps> = ({
       });
 
       if (isSuccess) {
-        onRewardXp(30, `memory_stage2_${activeStory.id}_word_${wordIndex}`);
+        onRewardXp(30);
         speakText(targetWord);
       }
     }
