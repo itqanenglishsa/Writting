@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix إتقان English - Itqan Writing Mastery",
+  "description": "تطبيق تفاعلي لتعليم كتابة اللغة الإنجليزية للناطقين بالعربية باستراتيجيات كتابة الكلمات بالقلم، Type Along، وضع الإختفاء، إعادة ترتيب الجمل، الإملاء، والكتابة الظلية مع متجر XP ومتجر Hint.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
