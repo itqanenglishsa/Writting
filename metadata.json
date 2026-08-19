@@ -1,8 +1,0 @@
-{
-  "name": "Remix Remix Remix Remix إتقان English - Itqan Writing Mastery",
-  "description": "تطبيق تفاعلي لتعليم كتابة وقراءة اللغة الإنجليزية مع مكتبة مفردات شاملة مصنفة حسب معايير CEFR (A1 / A2 / B1 / B2) ومجموعات المعنى، باستراتيجيات الكتابة بالقلم، والطباعة، والإملاء، وترتيب الحروف، والذاكرة.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
